@@ -8,3 +8,6 @@ aiofiles==24.1.0
 groq==0.11.0
 numpy==1.26.4
 edge-tts==7.2.8
+# Postgres driver — required when DB_BACKEND=postgres (Railway / Supabase).
+# `[binary]` ships libpq prebuilt so the deploy doesn't need apt packages.
+psycopg[binary]==3.2.3

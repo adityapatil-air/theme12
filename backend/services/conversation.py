@@ -268,12 +268,25 @@ async def converse(
         f"Respond with the JSON schema above and nothing else."
     )
 
+    # Try the primary model first; if it errors (rate limit / outage),
+    # automatically fall back to the smaller / separately-rate-limited
+    # 8B model so the demo keeps working when the 70B daily budget is
+    # exhausted. The fast model uses a different quota lane on Groq.
     out = await groq_client.chat_json(
         sys_prompt, user,
         model=config.LLM_MODEL,
         temperature=0.3,
         max_tokens=500,
     )
+    if "_error" in out and getattr(config, "LLM_FAST_MODEL", None):
+        print(f"[conversation] primary LLM failed ({out.get('_error')!r}); "
+              f"retrying on {config.LLM_FAST_MODEL}", flush=True)
+        out = await groq_client.chat_json(
+            sys_prompt, user,
+            model=config.LLM_FAST_MODEL,
+            temperature=0.3,
+            max_tokens=500,
+        )
 
     if "_error" in out:
         # Soft fallback so a transient LLM failure never silences the call.

@@ -285,6 +285,15 @@ async def on_start():
     db.init_db()
 
 
+# ---------- health ----------
+# Lightweight liveness probe for Railway / Render / k8s healthchecks.
+# Returning JSON keeps probe traffic cheap — the full citizen.html page
+# is several kilobytes and doesn't need to be served on every probe.
+@app.get("/healthz")
+async def healthz():
+    return {"ok": True, "service": "pratyaya", "db_backend": config.DB_BACKEND}
+
+
 # ---------- pages ----------
 # A citizen visiting the public URL should land directly on the helpline
 # call screen — they should never see operator/admin chrome. The marketing
@@ -968,6 +977,47 @@ async def converse_endpoint(call_id: str,
         flush=True,
     )
 
+    # Low-ASR-confidence guard — when Whisper returns garbled text at low
+    # confidence (typical for noisy mic, heavy dialect, or low volume),
+    # don't run the LLM on it. The LLM will either misinterpret or bail
+    # to handover. Instead politely ask the caller to repeat. This
+    # protects the demo from a single bad audio frame derailing the call.
+    LOW_ASR_CONF = 0.50
+    if (raw_text and asr_conf > 0.0 and asr_conf < LOW_ASR_CONF
+            and len(raw_text.split()) < 14):
+        repeat_msg = {
+            "kn": "ಕ್ಷಮಿಸಿ, ನಾನು ಸ್ಪಷ್ಟವಾಗಿ ಕೇಳಿಸಿಕೊಳ್ಳಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಸ್ವಲ್ಪ ನಿಧಾನವಾಗಿ ಮತ್ತೊಮ್ಮೆ ಹೇಳ್ತೀರಾ?",
+            "hi": "क्षमा करें, मैं स्पष्ट नहीं सुन पाई। कृपया थोड़ा धीरे से दोबारा बताइए।",
+            "en": "Sorry, I didn't catch that clearly. Could you say it again, a little slower?",
+        }.get(response_lang, "Sorry, could you say that again, a little slower?")
+        repeat_lang = {"kn": "kn-IN", "hi": "hi-IN", "en": "en-IN"}.get(response_lang, "kn-IN")
+        repeat_roman = translit.to_roman(repeat_msg, response_lang)
+        raw_roman = translit.to_roman(raw_text, response_lang)
+        print(f"[converse-low-asr] conf={asr_conf:.2f} text={raw_text!r} → asking to repeat",
+              flush=True)
+        if not sess.shadow_mode:
+            await manager.send_citizen(call_id, {
+                "type": "ai_response",
+                "text": repeat_msg,
+                "text_roman": repeat_roman,
+                "speak_lang_code": repeat_lang,
+                "state": "CLARIFY",
+                "classification": "ask",
+                "raw_text": raw_text,
+                "raw_text_roman": raw_roman,
+            })
+        sess.last_state = "CLARIFY"
+        return {
+            "ok": True, "state": "CLARIFY", "action": "ask",
+            "low_asr_conf": True,
+            "transcript_native": raw_text,
+            "transcript_roman": raw_roman,
+            "reply": repeat_msg,
+            "reply_roman": repeat_roman,
+            "speak_lang_code": repeat_lang,
+            "slots": sess.slots, "verified": False, "needs_handover": False,
+        }
+
     # ---- empty ASR — re-ask in citizen's language, don't hand over. ----
     if not raw_text:
         fb = _fallback_response(response_lang)
@@ -1027,13 +1077,56 @@ async def converse_endpoint(call_id: str,
         convo["handover_reason"] = (convo.get("handover_reason")
                                      or f"distress_keywords:{','.join(matched_kw[:3])}")
 
+    # Trigger-happy guard — downgrade unjustified handover to "ask" for
+    # clarification. Fires when:
+    #   (1) we're on the first turn (LLM may misread noisy ASR), OR
+    #   (2) the LLM call itself errored (handover_reason='llm_unavailable')
+    #       — a system error is never a real distress signal, so don't
+    #       waste a human officer's time on it.
+    # In both cases we additionally require: no distress keywords matched,
+    # no severe issue type identified, no explicit human request, and no
+    # severe term in the reason or transcript.
+    reason_norm = (convo.get("handover_reason") or "").lower()
+    llm_failed = ("llm_unavailable" in reason_norm
+                  or "llm_error" in reason_norm)
+    if (convo["action"] == "handover"
+            and not matched_kw
+            and (len(sess.chat) < 2 or llm_failed)):
+        issue_type = ((convo.get("slots") or {}).get("issue_type") or "").lower()
+        text_low = (redacted or "").lower()
+        SEVERE_LABELS = {"domestic_violence", "child_safety", "child_abuse",
+                          "missing_person", "sexual_harassment", "harassment",
+                          "stalking", "cyber_abuse", "medical_emergency",
+                          "kidnapping", "rape", "assault", "self_harm",
+                          "suicide_threat", "immediate_danger"}
+        SEVERE_TERMS = ("violence", "abuse", "weapon", "danger", "harm",
+                        "kidnap", "follow", "stalk", "assault", "scared",
+                        "threat", "rape")
+        explicit_human = verification.wants_human(redacted or "")
+        severe_signal = (issue_type in SEVERE_LABELS
+                         or any(t in reason_norm for t in SEVERE_TERMS)
+                         or any(t in text_low for t in SEVERE_TERMS)
+                         or explicit_human)
+        if not severe_signal:
+            print(f"[converse-guard] downgrading unjustified handover→ask "
+                  f"(issue={issue_type!r} reason={reason_norm!r} "
+                  f"llm_failed={llm_failed} chat_len={len(sess.chat)})",
+                  flush=True)
+            convo["action"] = "ask"
+            convo["needs_handover"] = False
+            convo["handover_reason"] = ""
+            convo["reply"] = {
+                "kn": "ಕ್ಷಮಿಸಿ, ನಾನು ಸ್ಪಷ್ಟವಾಗಿ ಕೇಳಿಸಿಕೊಳ್ಳಲಿಲ್ಲ. ನಿಮ್ಮ ಸಮಸ್ಯೆಯನ್ನು ಸ್ವಲ್ಪ ಸ್ಪಷ್ಟವಾಗಿ ಹೇಳ್ತೀರಾ?",
+                "hi": "क्षमा करें, मैं स्पष्ट नहीं सुन पाई। क्या आप अपनी समस्या थोड़ा साफ़ बता सकती हैं?",
+                "en": "Sorry, I didn't catch that clearly. Could you tell me your concern again?",
+            }.get(response_lang, "Sorry, could you say that more clearly?")
+
     # CRITICAL — whenever the action is handover, the spoken reply MUST be
-    # a real bridge line ("I hear you, I'm connecting you to a human
-    # officer"). The LLM sometimes returns action=handover but a verify-
-    # style reply ("...is that right?"), which leaves the citizen confused
-    # and the call locked in HANDOVER state with no further response. Force
-    # the canned localized bridge so the spoken line always matches the
-    # action — no surprises for the caller mid-distress.
+    # a real bridge line. The LLM sometimes returns action=handover but a
+    # verify-style reply ("...is that right?"), which leaves the citizen
+    # confused and the call locked in HANDOVER state with no further
+    # response. Force the canned localized bridge so the spoken line always
+    # matches the action.
     if convo["action"] == "handover":
         convo["reply"] = verification.localized(verification.HANDOVER_BRIDGE,
                                                  response_lang)
@@ -1065,6 +1158,7 @@ async def converse_endpoint(call_id: str,
     # DEBUG — final committed action / state for this turn.
     print(f"[converse-commit] call={call_id} action={convo['action']!r} "
           f"new_state={new_state!r} needs_handover={convo.get('needs_handover')!r} "
+          f"reason={convo.get('handover_reason')!r} "
           f"matched_kw={matched_kw!r}", flush=True)
 
     if convo["action"] == "ask":

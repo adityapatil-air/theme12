@@ -17,10 +17,12 @@ from typing import Dict, Any
 from . import groq_client
 
 # Drop a copy of every uploaded audio blob here so we can replay it offline
-# when the live transcript comes back empty. Disabled by default; flip
-# PRATYAYA_DEBUG_AUDIO=1 in .env to enable.
+# when the live transcript comes back empty. Disabled by default — production
+# (Railway / cloud) has an ephemeral filesystem, so writing every audio blob
+# wastes disk and gets wiped on each redeploy. Flip PRATYAYA_DEBUG_AUDIO=1
+# in your local .env when you actually need replay debugging.
 _DEBUG_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "asr_debug"
-_DEBUG_AUDIO = os.getenv("PRATYAYA_DEBUG_AUDIO", "1") in ("1", "true", "True")
+_DEBUG_AUDIO = os.getenv("PRATYAYA_DEBUG_AUDIO", "0") in ("1", "true", "True")
 
 
 def _segment_confidence(seg: Dict[str, Any]) -> float:
