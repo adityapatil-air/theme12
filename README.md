@@ -38,19 +38,6 @@ A complete government-grade voice-to-voice helpline assistant that:
 
 ---
 
-## Mapped to the evaluation rubric
-
-| Criterion | Weight | How Pratyaya satisfies it |
-|---|---|---|
-| Voice-to-voice effectiveness | 25 % | Whisper Large v3 + Edge Neural TTS + VAD-based auto-listen loop + audible turn-taking cues + Roman transliteration line under every Kannada/Hindi message |
-| Verification & guardrails | 20 % | Explicit 3-state machine (VERIFIED · CLARIFY · HANDOVER) · voice-classified haudu/illa/partial · severity-aware escalation · SHA-256 hash-chained audit ledger · PII redaction at the call edge · 3 safety guards (distress fast-path · trigger-happy handover · low-ASR) |
-| Dialect & cultural understanding | 15 % | 4-way Kannada dialect classifier (lexical + LLM) · Whisper prompt-priming with dialect markers · paraphrases preserve dialect register · multilingual call summary in Kannada · Hindi · English |
-| Sentiment & emotional interpretation | 15 % | 6-dimensional sentiment fusion (lexical + prosodic) — distress · urgency · anger · fear · confusion · calm — drives auto-handover thresholds and surfaces on the agent dashboard as live bars and a trajectory chart |
-| Ease of use for agents | 15 % | Three-zone agent dashboard (Citizen Mirror · AI Understanding · Agent Control) · inline-editable interpretation fields · operator types/speaks **English**, citizen hears **Kannada/Hindi** via translation + neural TTS · keyboard shortcuts · multilingual call summary · Telegram phone notification |
-| Technical design & extensibility | 10 % | Modular service architecture (one file per concern) · pluggable storage (SQLite ↔ Supabase Postgres) · async parallel pipeline · India-native model swap-points (IndicConformer / Shrutam2 / Sarvam-1 / Wav2Vec2) · open-source critical path · stateless app layer (HA-ready) |
-
----
-
 ## Test cases — what we actually demonstrated
 
 These are the four example scenarios from the problem statement, all
@@ -125,24 +112,6 @@ instead of bailing to a wrong handover. **Result · ✅ PASS** for the guardrail
 behavior — the system stayed in CLARIFY rather than escalating on garbled audio.
 Production swap to AI4Bharat IndicConformer is the noted long-term fix for
 Kannada-specific ASR quality.
-
----
-
-## Bugs we found and fixed during this build
-
-| # | Bug | Where | Fix |
-|---|---|---|---|
-| 1 | `KeyError: '\n  "reply"'` on every `/converse` turn | `conversation.py:157` — `.format()` choking on the literal JSON example in the system prompt | Switched to `.replace("{language_label}", ...)` |
-| 2 | Distress fast-path force-overrode `action="verify"` with `action="handover"` while keeping the verify-style reply text — locked the call into HANDOVER state with citizen still being asked "is that right?" | `main.py` — converse_endpoint distress override | Restricted override to only `ask/guide/close` actions; verify-then-confirm-then-handover flow now runs naturally |
-| 3 | LLM returned `action="handover"` on a verify reply — citizen heard "is that right?" while server was in HANDOVER mode → all subsequent turns silently early-returned | `main.py` post-handover branch | Force-replace `convo["reply"]` with the canned `HANDOVER_BRIDGE` whenever `action == "handover"` |
-| 4 | Trigger-happy LLM bailed to handover on noisy first-turn ASR (no distress signal, no severe issue type, no human request) | `main.py` | Added trigger-happy guard — downgrades unjustified handover to `ask` for clarification |
-| 5 | LLM `_error` fallback hardcoded to `action="handover"` — every Groq rate-limit became a fake handover | `conversation.py` | Auto-fallback to `LLM_FAST_MODEL` (`llama-3.1-8b-instant`) on primary failure; trigger-happy guard also catches `reason="llm_unavailable"` |
-| 6 | Whisper hallucinated English from Kannada audio at low confidence | `services/asr.py` | Low-ASR-confidence guard (< 0.50, < 14 words) skips LLM and asks citizen to repeat |
-| 7 | Citizen language-picker default was `auto` → ASR detected wrong language and produced garbage | `frontend/citizen.html` | Default selection changed to `Kannada`; `auto` moved to last position |
-| 8 | Handover bridge spoken to citizen was sterile and short | `services/verification.py` | Rewrote `HANDOVER_BRIDGE` for KN/HI/EN to warmly say *"I hear you, you're not alone, please stay on the line, I'm connecting you to our woman officer right now"* |
-| 9 | `psycopg` imported in `db_pg.py` but missing from `requirements.txt` → Railway deploy crashed at module import | `requirements.txt` | Added `psycopg[binary]==3.2.3` |
-| 10 | ASR debug audio writes to disk on every call (default ON) — fills ephemeral filesystem on Railway | `services/asr.py` | Default `PRATYAYA_DEBUG_AUDIO=0` |
-| 11 | Lightweight liveness probe missing — Railway healthcheck was hitting full HTML | `backend/main.py` | Added `/healthz` endpoint returning JSON |
 
 ---
 
