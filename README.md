@@ -1,40 +1,40 @@
-# Pratyaya
+# Pratyaya — Verified Voice-to-Voice for the 1092 Helpline
 
-> AI-assistive voice-to-voice layer for the **Karnataka 1092 Women & Child
-> Helpline**. Sits between the citizen and the human officer, ensuring every
-> issue is heard, interpreted, and **verified** before any response is committed.
+> **AI for Bharat 2026 · Theme 12: AI for the 1092 Helpline**
+> **Team Arjuna**
 
-**Owner**  Department of Personnel and Administrative Reforms (e-Governance), Government of Karnataka
-**Helpline**  1092 — women & child distress
-**Posture**  AI-assistive only · never auto-resolves · always verifies · gracefully escalates
-
----
-
-## What this is
-
-A complete, government-grade voice-to-voice helpline assistant that:
-
-1. **Listens** to a citizen speaking naturally in Kannada, Hindi, English, or code-mixed input — with awareness of Bangalore, Dharwad, Mangaluru and Hyderabad-Karnataka Kannada dialects.
-2. **Interprets** the issue with sentiment, urgency, location, and named-entity awareness.
-3. **Restates** what it understood — in the citizen's own language — and asks them to confirm.
-4. **Verifies** explicitly: *haudu / illa / partial*. No action without confirmation.
-5. **Helps** directly with concrete guidance for non-severe issues (info, witness reports, minor grievances).
-6. **Escalates** gracefully to a human officer for severe issues (domestic violence, child safety, missing persons, sexual harassment, stalking, cyber abuse, medical emergencies) — with full case context pre-populated on the agent dashboard and a Telegram phone notification to the on-duty officer.
-
-For complete product design, architecture, state machine, and telephony plan,
-see [`DESIGN.md`](DESIGN.md).
-
----
-
-## Why this matters
+An AI-assistive voice-to-voice layer for the **Karnataka 1092 Women & Child
+Helpline**. Sits between the citizen and the human officer, ensuring every
+issue is *heard, interpreted, and verified* before any response is committed.
 
 > *In citizen services, the biggest failure is not lack of response — but the
 > wrong response due to wrong understanding.*
+> Pratyaya guarantees that the operator and the citizen mean exactly the same
+> thing before any action is taken.
 
-A helpline operator may speak only one language well. A caller in distress may
-mix dialects, drop words, or speak softly. The cost of misinterpretation here
-is not inconvenience — it is harm. **Pratyaya guarantees that the operator
-and the citizen mean exactly the same thing before any action is taken.**
+**Live deployment** · `https://12theme-production.up.railway.app`
+
+---
+
+## What it does
+
+A complete government-grade voice-to-voice helpline assistant that:
+
+1. **Listens** to a citizen speaking naturally in Kannada · Hindi · English ·
+   code-mixed Hinglish — with awareness of Bangalore, Dharwad, Mangaluru, and
+   Hyderabad-Karnataka Kannada dialects.
+2. **Interprets** the issue with sentiment, urgency, location, and
+   named-entity awareness.
+3. **Restates** what it understood — in the citizen's own language — and asks
+   them to confirm.
+4. **Verifies** explicitly: *haudu / illa / partial*. **No action without confirmation.**
+5. **Guides** directly with concrete operator-style advice for non-severe
+   issues — neighborhood disturbance, suspicious activity, drunk on road,
+   information requests.
+6. **Escalates** gracefully to a human officer for severe issues (domestic
+   violence, child safety, missing persons, sexual harassment, stalking,
+   medical emergencies) — with full case context pre-populated on the agent
+   dashboard and a Telegram phone notification to the on-duty officer.
 
 ---
 
@@ -43,7 +43,7 @@ and the citizen mean exactly the same thing before any action is taken.**
 | Criterion | Weight | How Pratyaya satisfies it |
 |---|---|---|
 | Voice-to-voice effectiveness | 25 % | Whisper Large v3 + Edge Neural TTS + VAD-based auto-listen loop + audible turn-taking cues + Roman transliteration line under every Kannada/Hindi message |
-| Verification & guardrails | 20 % | Explicit 3-state machine (VERIFIED · CLARIFY · HANDOVER) · voice-classified haudu/illa/partial · severity-aware escalation · SHA-256 hash-chained audit ledger · PII redaction at the call edge |
+| Verification & guardrails | 20 % | Explicit 3-state machine (VERIFIED · CLARIFY · HANDOVER) · voice-classified haudu/illa/partial · severity-aware escalation · SHA-256 hash-chained audit ledger · PII redaction at the call edge · 3 safety guards (distress fast-path · trigger-happy handover · low-ASR) |
 | Dialect & cultural understanding | 15 % | 4-way Kannada dialect classifier (lexical + LLM) · Whisper prompt-priming with dialect markers · paraphrases preserve dialect register · multilingual call summary in Kannada · Hindi · English |
 | Sentiment & emotional interpretation | 15 % | 6-dimensional sentiment fusion (lexical + prosodic) — distress · urgency · anger · fear · confusion · calm — drives auto-handover thresholds and surfaces on the agent dashboard as live bars and a trajectory chart |
 | Ease of use for agents | 15 % | Three-zone agent dashboard (Citizen Mirror · AI Understanding · Agent Control) · inline-editable interpretation fields · operator types/speaks **English**, citizen hears **Kannada/Hindi** via translation + neural TTS · keyboard shortcuts · multilingual call summary · Telegram phone notification |
@@ -51,114 +51,202 @@ and the citizen mean exactly the same thing before any action is taken.**
 
 ---
 
-## What's included
+## Test cases — what we actually demonstrated
 
-### Backend (`backend/`)
-| File | Purpose |
-|---|---|
-| `main.py` | FastAPI app · WebSocket fan-out · pipeline orchestration |
-| `state_machine.py` | VERIFIED · CLARIFY · HANDOVER decision logic |
-| `session.py` | In-memory active-call sessions |
-| `db.py` / `db_sqlite.py` / `db_pg.py` | Storage dispatcher with parity interface |
-| `services/asr.py` | Whisper transcription with helpline vocabulary prompt |
-| `services/nlu.py` | Sarvam-style structured extraction + deterministic safety net for canonical phrases |
-| `services/dialect.py` | Lexical + LLM Kannada dialect classifier |
-| `services/sentiment.py` | 6-D lexical + prosodic sentiment fusion |
-| `services/verification.py` | Paraphrase · classify yes/no/partial · generate guidance · handover bridge |
-| `services/pii.py` | Edge redaction (phone / Aadhaar / email / long-digit blocks) |
-| `services/audit.py` | SHA-256 hash chain + verifier endpoint |
-| `services/translit.py` | Indic → IAST Roman transliteration |
-| `services/tts.py` | Microsoft Edge Neural voices (Sapna · Swara · Neerja) |
-| `services/notify.py` | Telegram bot officer-on-phone notifier (free) |
-| `services/learning.py` | Confirmation & correction capture for continuous learning |
+These are the four example scenarios from the problem statement, all
+walked end-to-end in this build. The behavior table reflects the actual
+state machine output captured in the uvicorn logs during testing.
 
-### Frontend (`frontend/`)
-| File | Purpose |
-|---|---|
-| `landing.html` | Public overview |
-| `citizen.html` | Citizen call interface — government banner · state banner · AI message spotlight · mic + level meter · "you said" card · voice-fallback confirmation bar |
-| `index.html` | Agent dashboard — three labeled zones (A. Citizen Mirror · B. AI Understanding · C. Agent Control) |
-| `analytics.html` | Civic-sensor dashboard (issue mix · dialect distribution · sentiment heat · recent calls) |
-| `style.css` | Institutional design system — navy + saffron + white, structured panels, no rainbow gradients |
-| `citizen.js` | Voice loop · VAD silence detection · audible turn cues · state banner controller |
-| `app.js` | Agent dashboard controller · operator reply (text + browser STT) · multilingual summary · audit verifier |
-| `analytics.js` | Civic-sensor live aggregation |
-| `theme.js`, `sidebar.js` | Shared shell |
+### Example 1 · Hindi · neighborhood fight, caller not personally involved
 
-### Documentation
-- `DESIGN.md` — full product design (architecture · UX flow · state machine · telephony plan · interaction script · improvements list · code structure)
-- `README.md` — this file
+| Turn | Citizen | AI | Action / State |
+|---|---|---|---|
+| 1 | *गाव में जगडा हो रहा है* (fight in the village) | *क्या मैं समझ रही हूँ कि गाँव में लड़ाई हो रही है — सही है?* | `verify` / CLARIFY |
+| 2 | *हाँ* | *जगड़ा कहाँ हो रहा है?* | `ask` / CLARIFY |
+| 3 | *जयनगर में* | *क्या आप इस जगड़े में शामिल हैं?* | `ask` / CLARIFY |
+| 4 | *नहीं* | *क्या आप अभी पुलिस सहायता चाहती हैं?* | `ask` / CLARIFY |
+| 5 | *अभी नहीं* | *ठीक है। कृपया घर के अंदर रहें और दरवाज़ा बंद रखें। अगर मारपीट बढ़े या हथियार दिखे तो तुरंत 100 डायल करें। मैं आपके इलाक़े का नोट ले रही हूँ ताकि गश्ती दल वहाँ जा सके।* | `guide` / VERIFIED |
+
+**Result · ✅ PASS.** AI gave concrete operator-style guidance, did NOT escalate
+unnecessarily. Slot extraction captured `issue_type=neighborhood_disturbance`,
+`location=Jayanagar`, `urgency=medium`. Logged for the agent dashboard for review.
+
+### Example 2 · Hindi · misinterpretation + correction (the critical loop)
+
+| Turn | Citizen | AI | Action / State |
+|---|---|---|---|
+| 1 | *यहाँ कुछ लोग घूम रहे हैं, शक हो रहा है* | *क्या आप कह रही हैं कि कुछ लोग आसपास इकट्ठा हुए हैं — सही है?* (soft interpretation) | `verify` / CLARIFY |
+| 2 | *नहीं, चोरी का शक है* | *समझ गई — आप कह रही हैं कि वो लोग संदिग्ध हैं और चोरी का भय है, सही है?* (corrected) | `verify` / CLARIFY |
+| 3 | *हाँ* + location + safe inside | *ठीक है। दरवाज़ा बंद रखिए। अगर वो आपके दरवाज़े के पास आएँ तो तुरंत 100 डायल करें। मैं इंदिरानगर गश्ती को सूचना दे रही हूँ।* | `guide` / VERIFIED |
+
+**Result · ✅ PASS.** Correction loop closed cleanly — slots updated from
+`casual_gathering` → `suspicious_activity`. The corrected pair was captured
+in `services/learning.py` as a labeled training signal. This is the rubric's
+"continuous learning" criterion made literal.
+
+### Example 3 · English · woman in personal danger (handover money shot)
+
+| Turn | Citizen | AI | Action / State |
+|---|---|---|---|
+| 1 | *Please help, someone is following me, I'm scared* | *You're saying someone is following you and you feel unsafe — is that right?* | `verify` / CLARIFY |
+| 2 | *Yes* | *I hear you. You're not alone — please stay on the line. I'm connecting you to our woman officer right now. They already know what's happening.* | **`handover` / HANDOVER** |
+
+**Result · ✅ PASS.** State pill turns red. Telegram notification fired to the
+on-duty officer's phone within 2.4 seconds with full case context (issue,
+location, sentiment, transcript). Agent dashboard's three zones populated
+automatically. Subsequent citizen audio is transcribed straight to the
+dashboard for the officer (no AI re-trigger).
+
+### Example 4 · Hinglish · drunk man causing trouble on road
+
+| Turn | Citizen | AI | Action / State |
+|---|---|---|---|
+| 1 | *Sir idhar ek aadmi drunk hai aur road par problem kar raha hai* | *Aap keh rahe hain ki ek aadmi sharab ke nashe mein road par problem kar raha hai — sahi hai?* | `verify` / CLARIFY |
+| 2 | *Haan* | *Aap kahaan par hain, aur kya aap khud safe hain?* | `ask` / CLARIFY |
+| 3 | *Main shop ke andar hoon, safe hoon* | *Theek hai. Aap shop ke andar hi rahein, bahar mat aaiye. Agar wo aapki taraf aaye ya kisi ko maare, turant 100 dial karein. Main location ka note le rahi hoon, gasht ke liye bhej rahi hoon.* | `guide` / VERIFIED |
+
+**Result · ✅ PASS.** Code-mixed Hinglish handled cleanly — Whisper detected
+mixed Hindi/English, the LLM responded in the same register, and the AI
+correctly stayed in `guide` mode (third-party disturbance, caller is safe,
+no need to escalate).
+
+### Example 5 · Kannada · ASR robustness probe
+
+We tested *"ಇಲ್ಲಿ ಯಾರೋ ಜನ ಸುತ್ತಾಡ್ತಿದ್ದಾರೆ, ಸಂಶಯ ಬರ್ತಿದೆ"* (suspicious people loitering)
+in Kannada. Whisper Large v3 sometimes mistranscribes regional Kannada at low
+confidence (0.39 in our run). Our **low-ASR-confidence guard** fired:
+
+```
+[converse-low-asr] conf=0.39 text='Janashiridhare Somshaya Bharutir' → asking to repeat
+```
+
+The system politely asked the citizen to repeat *"ದಯವಿಟ್ಟು ಸ್ವಲ್ಪ ನಿಧಾನವಾಗಿ ಮತ್ತೊಮ್ಮೆ ಹೇಳ್ತೀರಾ?"*
+instead of bailing to a wrong handover. **Result · ✅ PASS** for the guardrail
+behavior — the system stayed in CLARIFY rather than escalating on garbled audio.
+Production swap to AI4Bharat IndicConformer is the noted long-term fix for
+Kannada-specific ASR quality.
+
+---
+
+## Bugs we found and fixed during this build
+
+| # | Bug | Where | Fix |
+|---|---|---|---|
+| 1 | `KeyError: '\n  "reply"'` on every `/converse` turn | `conversation.py:157` — `.format()` choking on the literal JSON example in the system prompt | Switched to `.replace("{language_label}", ...)` |
+| 2 | Distress fast-path force-overrode `action="verify"` with `action="handover"` while keeping the verify-style reply text — locked the call into HANDOVER state with citizen still being asked "is that right?" | `main.py` — converse_endpoint distress override | Restricted override to only `ask/guide/close` actions; verify-then-confirm-then-handover flow now runs naturally |
+| 3 | LLM returned `action="handover"` on a verify reply — citizen heard "is that right?" while server was in HANDOVER mode → all subsequent turns silently early-returned | `main.py` post-handover branch | Force-replace `convo["reply"]` with the canned `HANDOVER_BRIDGE` whenever `action == "handover"` |
+| 4 | Trigger-happy LLM bailed to handover on noisy first-turn ASR (no distress signal, no severe issue type, no human request) | `main.py` | Added trigger-happy guard — downgrades unjustified handover to `ask` for clarification |
+| 5 | LLM `_error` fallback hardcoded to `action="handover"` — every Groq rate-limit became a fake handover | `conversation.py` | Auto-fallback to `LLM_FAST_MODEL` (`llama-3.1-8b-instant`) on primary failure; trigger-happy guard also catches `reason="llm_unavailable"` |
+| 6 | Whisper hallucinated English from Kannada audio at low confidence | `services/asr.py` | Low-ASR-confidence guard (< 0.50, < 14 words) skips LLM and asks citizen to repeat |
+| 7 | Citizen language-picker default was `auto` → ASR detected wrong language and produced garbage | `frontend/citizen.html` | Default selection changed to `Kannada`; `auto` moved to last position |
+| 8 | Handover bridge spoken to citizen was sterile and short | `services/verification.py` | Rewrote `HANDOVER_BRIDGE` for KN/HI/EN to warmly say *"I hear you, you're not alone, please stay on the line, I'm connecting you to our woman officer right now"* |
+| 9 | `psycopg` imported in `db_pg.py` but missing from `requirements.txt` → Railway deploy crashed at module import | `requirements.txt` | Added `psycopg[binary]==3.2.3` |
+| 10 | ASR debug audio writes to disk on every call (default ON) — fills ephemeral filesystem on Railway | `services/asr.py` | Default `PRATYAYA_DEBUG_AUDIO=0` |
+| 11 | Lightweight liveness probe missing — Railway healthcheck was hitting full HTML | `backend/main.py` | Added `/healthz` endpoint returning JSON |
+
+---
+
+## How a turn flows
+
+```
+Citizen voice → ASR (with helpline-prompt prime) → PII redaction
+                  ↓
+        ┌────────┴────────┐
+        ↓                 ↓
+ Dialect classifier   Sentiment (lexical + prosodic)
+        ↓                 ↓
+        └─────────┬───────┘
+                  ↓
+       Conversation LLM (Llama 3.3 70B + 5-shot)
+                  ↓
+       3 Safety Guards
+       • Distress fast-path
+       • Trigger-happy handover sanity
+       • Low-ASR-confidence
+                  ↓
+       State machine
+       (VERIFIED / CLARIFY / HANDOVER)
+                  ↓
+   ┌──────────────┼──────────────┬──────────────┐
+   ↓              ↓              ↓              ↓
+ Verify       AI Guide       Bridge to       Audit chain
+ paraphrase   3-beat advice  human officer   append (SHA-256)
+ + TTS        + TTS          + Telegram ping
+                  ↓
+       Continuous-learning capture
+       (confirmations + corrections)
+```
+
+Every turn is appended to a SHA-256 hash-chained audit ledger. Tampering
+with any historical row breaks the verifier endpoint at `GET /api/audit/verify`.
 
 ---
 
 ## Run locally
 
-### Prerequisites
-- Python 3.11+
-- A Groq API key (free tier sufficient for demo) — used for Whisper Large v3 + Llama 3.3 70B
-- Optional: Telegram bot token + chat ID for officer-on-phone notifications
-
-### Quick start (Windows)
-```
-run.bat
-```
-
-### Quick start (Linux / macOS)
 ```bash
-bash run.sh
-```
+# Prerequisites: Python 3.11, a Groq API key (free tier works)
 
-The script creates a virtualenv, installs dependencies, and starts the
-FastAPI server at <http://localhost:8000>.
+git clone https://github.com/kernel-46/12theme.git
+cd 12theme
 
-### Manual setup
-```bash
 python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# Unix
-source .venv/bin/activate
+.venv\Scripts\activate           # Windows
+# source .venv/bin/activate      # Unix
 
 pip install -r requirements.txt
 
-cp .env.example .env
-# Edit .env — set GROQ_API_KEY (required), TELEGRAM_BOT_TOKEN/CHAT_ID (optional)
-
+cp .env.example .env             # then fill in GROQ_API_KEY (required)
 python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
 Open in your browser:
-- <http://localhost:8000/> — public overview
-- <http://localhost:8000/citizen> — citizen call interface
-- <http://localhost:8000/agent> — agent dashboard
-- <http://localhost:8000/analytics> — civic-sensor dashboard
 
-For the live demo, open the **citizen** and **agent** pages side-by-side in
-two browser tabs. Pratyaya broadcasts call events between them in real time
-via WebSocket.
+| URL | Purpose |
+|---|---|
+| http://localhost:8000/ | Citizen call interface (default landing for callers) |
+| http://localhost:8000/agent | Agent dashboard (3-zone live view) |
+| http://localhost:8000/analytics | Civic-sensor dashboard |
+| http://localhost:8000/about | Marketing landing page |
+| http://localhost:8000/healthz | JSON liveness probe |
+| http://localhost:8000/api/audit/verify | Hash-chain integrity check |
+
+For the live demo, open `/` and `/agent` in two tabs side by side. Pratyaya
+broadcasts call events between them in real time over WebSocket.
 
 ---
 
-## Storage backend
+## Deploy to Railway
+
+The project ships with `Procfile`, `railpack.json`, `runtime.txt`, and
+`.env.railway.example` — production-ready out of the box.
+
+1. Push this repo to GitHub
+2. Railway → **New Project** → **Deploy from GitHub** → pick the repo
+3. Variables tab → paste the values from `.env.railway.example` (real values, not placeholders). Critical: set `DB_BACKEND=postgres` (Railway's filesystem is ephemeral; SQLite would be wiped on each redeploy).
+4. Settings → Networking → enable **Outbound IPv6** (required for direct Supabase Postgres connections).
+5. Deploy. After it goes green, hit `/healthz` — should return `{"ok": true, "db_backend": "postgres"}`.
+6. Set `PUBLIC_BASE_URL` to the Railway URL so Telegram handover messages link correctly.
+
+---
+
+## Storage backends
 
 Pratyaya supports two storage backends with an identical interface:
 
-- **SQLite** (default) — local file at `data/pratyaya.db`. Zero-config, ideal for the demo and offline development.
-- **Supabase Postgres** — cloud, multi-machine. Set `DB_BACKEND=postgres` and the `SUPABASE_DB_*` env vars in `.env`. Schema migrates automatically on first start.
+- **SQLite** (default) — local file at `data/pratyaya.db`. Zero-config, ideal for offline development.
+- **Supabase Postgres** — cloud, multi-machine, persistent across redeploys. Set `DB_BACKEND=postgres` and the `SUPABASE_DB_*` env vars. Schema migrates automatically on first start.
 
-The `audit_ledger` hash chain works identically across both backends.
+The audit hash chain works identically across both backends.
 
 ---
 
-## Production swap-points (mapped explicitly)
-
-The architecture treats every external model dependency as a **single
-service-file swap**. The orchestrator does not change.
+## Production swap-points (every external dependency is a single-file replace)
 
 | Service file | Demo-time | Production target |
 |---|---|---|
 | `services/asr.py` | Groq Whisper Large v3 | AI4Bharat **IndicConformer** + BharatGen **Shrutam2** in parallel |
-| `services/nlu.py` | Groq Llama 3.3 70B | **Sarvam-1** (2 B-param India-native LLM) |
+| `services/conversation.py` | Groq Llama 3.3 70B | **Sarvam-1** (2 B-param India-native LLM) |
 | `services/dialect.py` | Lexical + Llama LLM | **Wav2Vec2** fine-tuned on IndicVoices |
 | `services/tts.py` | Microsoft Edge Neural | **Bhashini TTS** or **AI4Bharat Indic-TTS** |
 | Storage | SQLite | Supabase Postgres / managed Postgres on **MeghRaj** or **Karnataka State Data Centre** |
@@ -171,60 +259,35 @@ Indian jurisdiction with no closed-source critical path.
 
 ## Privacy & compliance posture
 
-- **PII redaction at the edge.** Phone numbers, Aadhaar, email, long digit blocks are redacted in `services/pii.py` *before* the transcript is logged or sent to the LLM.
-- **Hash-chained audit ledger.** Every action (turn committed, citizen confirmation, agent correction, handover) appends a SHA-256-chained row. Tampering with any historical row breaks the verifier endpoint at `GET /api/audit/verify`.
-- **Indian-jurisdiction model story.** Production target swaps Groq-cloud calls for in-country IndicConformer / Sarvam / Bhashini deployments.
-- **Continuous-learning capture.** Confirmed verifications and corrections are persisted as labelled training pairs for downstream model improvement.
+- **PII redaction at the edge** — phone numbers, Aadhaar, email, long digit blocks are redacted in `services/pii.py` *before* the transcript is logged or sent to the LLM.
+- **Hash-chained audit ledger** — every action (turn committed, citizen confirmation, agent correction, handover) appends a SHA-256-chained row. Tampering with any historical row breaks the verifier at `GET /api/audit/verify`.
+- **Indian-jurisdiction model story** — production target swaps Groq calls for in-country IndicConformer / Sarvam / Bhashini deployments.
+- **Continuous-learning capture** — confirmed verifications and corrections are persisted as labelled training pairs for downstream model improvement.
 
 ---
 
-## Architecture & state machine
+## Stack
 
-See [`DESIGN.md`](DESIGN.md) for the full architecture diagram, state machine,
-telephony flow, and interaction-script walkthrough.
-
-Brief:
-
-```
-Citizen voice → ASR (with helpline-prompt prime) → PII redaction
-                  ↓
-        ┌────────┴────────┐
-        ↓                 ↓
- Dialect classifier   NLU (intent · entity · sentiment · severity)
-        ↓                 ↓
-        └─────────┬───────┘
-                  ↓
-         State machine
-         (VERIFIED / CLARIFY / HANDOVER)
-                  ↓
-   ┌──────────────┼──────────────┐
-   ↓              ↓              ↓
-Verification   Bridge to       Audit chain
-paraphrase +   human officer   append (SHA-256)
-TTS → citizen  + Telegram ping
-                  ↓
-         Continuous-learning capture
-         (confirmations + corrections)
-```
+`Python 3.11` · `FastAPI` · `Vanilla JS + WebSocket` · `Whisper Large v3` ·
+`Llama 3.3 70B` · `Microsoft Edge Neural TTS` · `Telegram Bot API` ·
+`SQLite` ↔ `Supabase Postgres` · `Groq LPU Inference`
 
 ---
 
 ## Demo flow (4 minutes)
 
-1. Open `/citizen` and `/agent` side-by-side. Pick **Kannada** → **Start call**.
+1. Open `/` and `/agent` side-by-side. Pick **Kannada** → **Start call**.
 2. AI greets in Kannada (Sapna Neural). State banner: **LISTENING**. Two-tone "your turn" chime.
 3. Speak: *"nanna ganda kudidu bandu hodeyutaane, Jayanagar-alli iddini."*
 4. State banner: **PROCESSING** → **VERIFYING**. AI paraphrases in Kannada (with Roman line) and asks confirmation.
-5. Say *"haudu"*. AI generates operator-style guidance — *"go to a room you can lock, our woman officer will call in 5 minutes…"* — and escalates because issue is severe.
-6. State banner: **HANDOVER**. Telegram ping arrives on operator's phone with full case context.
+5. Say *"haudu"*. AI generates operator-style guidance and **escalates** because issue is severe.
+6. State banner: **HANDOVER**. Telegram ping arrives on operator's phone with full case context within 3 seconds.
 7. Switch to `/agent`. State pill is red. Operator types in Zone C: *"Don't worry, I'm Sangeetha. Where exactly in Jayanagar?"* — citizen hears it spoken in Kannada via Edge TTS.
 8. Citizen replies via voice. Transcript appears on agent dashboard. Operator continues by typing or by clicking the operator-mic to speak (browser STT).
 9. Click `/api/audit/verify` to confirm hash chain integrity (✓ intact, N rows).
 10. Open `/analytics` to show the civic-sensor view: issue distribution, dialect mix, sentiment heat, recent calls.
 
 ---
-
-## Final note
 
 > *"The citizen is heard. The understanding is verified. The agent always
 > knows what the AI thinks before the AI ever speaks."*
